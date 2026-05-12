@@ -1,0 +1,8 @@
+server:
+  address: ":8080"
+
+grpc:
+  user-svc:
+    address: "localhost:8100"
+  asset-svc:
+    address: "localhost:8101"
