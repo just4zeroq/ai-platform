@@ -3,7 +3,9 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
+	"math/rand"
 	"strconv"
 	"time"
 
@@ -101,80 +103,101 @@ func (s *AssetService) ListTransactions(ctx context.Context, req *assetv1.ListTr
 }
 
 func (s *AssetService) ReportUsage(ctx context.Context, req *assetv1.ReportUsageReq) (*assetv1.ReportUsageRes, error) {
+	if req.UserId <= 0 {
+		return nil, errors.New("user_id is required")
+	}
+	if req.Quota <= 0 {
+		return nil, errors.New("quota must be positive")
+	}
+	if math.IsNaN(req.Quota) || math.IsInf(req.Quota, 0) {
+		return nil, errors.New("invalid quota value")
+	}
+
 	if err := s.EnsureBalance(ctx, req.UserId); err != nil {
 		return nil, err
 	}
 
 	// Optimistic locking: retry up to 3 times on version conflict
 	var balanceAfter float64
-	for attempt := 0; attempt < 3; attempt++ {
-		// Read current balance with version
-		record, err := g.DB().Model("balances").Ctx(ctx).Where("user_id", req.UserId).One()
+	err := g.DB().Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
+		for attempt := 0; attempt < 3; attempt++ {
+			// Read current balance with version
+			record, err := tx.Model("balances").Ctx(ctx).Where("user_id", req.UserId).One()
+			if err != nil {
+				return err
+			}
+			if record == nil {
+				return errors.New("balance not found")
+			}
+
+			currentBalance := record["balance"].Float64()
+			version := record["version"].Int()
+
+			if currentBalance < req.Quota {
+				return errors.New("insufficient balance")
+			}
+
+			balanceAfter = math.Max(currentBalance-req.Quota, 0)
+			quotaStr := strconv.FormatFloat(req.Quota, 'f', -1, 64)
+
+			// Atomic update with version check
+			result, err := tx.Model("balances").Ctx(ctx).
+				Where("user_id", req.UserId).
+				Where("version", version).
+				Data(g.Map{
+					"balance":         balanceAfter,
+					"total_consumed":  gdb.Raw("total_consumed + " + quotaStr),
+					"version":         gdb.Raw("version + 1"),
+					"updated_at":      gdb.Raw("NOW()"),
+				}).Update()
+			if err != nil {
+				return err
+			}
+			rows, err := result.RowsAffected()
+			if err != nil {
+				return err
+			}
+			if rows > 0 {
+				break // success
+			}
+			if attempt == 2 {
+				return errors.New("concurrent update conflict, please retry")
+			}
+		}
+
+		// Record transaction
+		balanceBefore := balanceAfter + req.Quota
+		_, err := tx.Model("transactions").Ctx(ctx).Data(g.Map{
+			"user_id":        req.UserId,
+			"type":           "consume",
+			"amount":         req.Quota,
+			"balance_before": balanceBefore,
+			"balance_after":  balanceAfter,
+			"reference_type": "usage",
+			"remark":         "usage: " + req.ModelName,
+		}).Insert()
 		if err != nil {
-			return nil, err
-		}
-		if record == nil {
-			return nil, errors.New("balance not found")
+			return err
 		}
 
-		currentBalance := record["balance"].Float64()
-		version := record["version"].Int()
-
-		if currentBalance < req.Quota {
-			return nil, errors.New("insufficient balance")
-		}
-
-		balanceAfter = math.Max(currentBalance-req.Quota, 0)
-
-		// Atomic update with version check
-		result, err := g.DB().Model("balances").Ctx(ctx).
-			Where("user_id", req.UserId).
-			Where("version", version).
-			Data(g.Map{
-				"balance":         balanceAfter,
-				"total_consumed":  gdb.Raw("total_consumed + " + g.DB().GetCore().QuoteString(strconv.FormatFloat(req.Quota, 'f', -1, 64))),
-				"version":         gdb.Raw("version + 1"),
-				"updated_at":      gdb.Raw("NOW()"),
-			}).Update()
+		// Record usage
+		_, err = tx.Model("usage_records").Ctx(ctx).Data(g.Map{
+			"user_id":           req.UserId,
+			"api_key_id":        req.ApiKeyId,
+			"model_name":        req.ModelName,
+			"prompt_tokens":     req.PromptTokens,
+			"completion_tokens": req.CompletionTokens,
+			"quota":             req.Quota,
+			"request_id":        req.RequestId,
+			"channel_id":        req.ChannelId,
+			"channel_name":      req.ChannelName,
+		}).Insert()
 		if err != nil {
-			return nil, err
+			return err
 		}
-		rows, _ := result.RowsAffected()
-		if rows > 0 {
-			break // success
-		}
-		if attempt == 2 {
-			return nil, errors.New("concurrent update conflict, please retry")
-		}
-	}
 
-	// Record transaction
-	balanceBefore := balanceAfter + req.Quota
-	_, err := g.DB().Model("transactions").Ctx(ctx).Data(g.Map{
-		"user_id":        req.UserId,
-		"type":           "consume",
-		"amount":         req.Quota,
-		"balance_before": balanceBefore,
-		"balance_after":  balanceAfter,
-		"reference_type": "usage",
-		"remark":         "usage: " + req.ModelName,
-	}).Insert()
-	if err != nil {
-		return nil, err
-	}
-
-	// Record usage
-	_, err = g.DB().Model("usage_records").Ctx(ctx).Data(g.Map{
-		"user_id":           req.UserId,
-		"api_key_id":        req.ApiKeyId,
-		"model_name":        req.ModelName,
-		"prompt_tokens":     req.PromptTokens,
-		"completion_tokens": req.CompletionTokens,
-		"quota":             req.Quota,
-		"request_id":        req.RequestId,
-		"channel_id":        req.ChannelId,
-		"channel_name":      req.ChannelName,
-	}).Insert()
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -189,7 +212,7 @@ func (s *AssetService) CreateOrder(ctx context.Context, req *assetv1.CreateOrder
 	if req.Amount <= 0 {
 		return nil, errors.New("amount must be positive")
 	}
-	orderNo := "ORD" + time.Now().Format("20060102150405")
+	orderNo := fmt.Sprintf("ORD%s%04d", time.Now().Format("20060102150405"), rand.Intn(10000))
 	result, err := g.DB().Model("orders").Ctx(ctx).Data(g.Map{
 		"order_no":       orderNo,
 		"user_id":        req.UserId,
@@ -206,6 +229,7 @@ func (s *AssetService) CreateOrder(ctx context.Context, req *assetv1.CreateOrder
 		Order: &assetv1.Order{
 			Id: id, OrderNo: orderNo, UserId: req.UserId,
 			Type: req.Type, Status: "pending", TotalAmount: req.Amount,
+				PaymentMethod: req.PaymentMethod,
 		},
 	}, nil
 }
