@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	userpb "ai-gateway/api/userpb/v1"
+	userpb "api/user/v1"
 )
 
 var (

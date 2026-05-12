@@ -1,7 +1,7 @@
 package grpcclient
 
 import (
-	userpb "ai-gateway/api/userpb/v1"
+	userpb "api/user/v1"
 )
 
 var (

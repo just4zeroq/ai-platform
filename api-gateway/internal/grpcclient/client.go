@@ -1,8 +1,8 @@
 package grpcclient
 
 import (
-	assetpb "api-gateway/api/assetpb/v1"
-	userpb "api-gateway/api/userpb/v1"
+	assetpb "api/asset/v1"
+	userpb "api/user/v1"
 )
 
 var (

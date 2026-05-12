@@ -1,7 +1,7 @@
 package grpcclient
 
 import (
-	assetpb "user-svc/api/assetpb/v1"
+	assetpb "api/asset/v1"
 )
 
 var (

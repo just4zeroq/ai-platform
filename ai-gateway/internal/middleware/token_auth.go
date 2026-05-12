@@ -9,7 +9,7 @@ import (
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/net/ghttp"
 
-	userpb "ai-gateway/api/userpb/v1"
+	userpb "api/user/v1"
 )
 
 // TokenAuth validates the API key via gRPC call to user-svc.

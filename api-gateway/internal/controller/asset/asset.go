@@ -4,7 +4,7 @@ import (
 	"context"
 
 	assetv1 "api-gateway/api/asset/v1"
-	assetpb "api-gateway/api/assetpb/v1"
+	assetpb "api/asset/v1"
 	"api-gateway/internal/grpcclient"
 
 	"github.com/gogf/gf/v2/errors/gcode"

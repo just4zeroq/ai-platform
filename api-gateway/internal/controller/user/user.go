@@ -4,7 +4,7 @@ import (
 	"context"
 
 	userv1 "api-gateway/api/user/v1"
-	userpb "api-gateway/api/userpb/v1"
+	userpb "api/user/v1"
 	"api-gateway/internal/grpcclient"
 
 	"github.com/gogf/gf/v2/errors/gcode"

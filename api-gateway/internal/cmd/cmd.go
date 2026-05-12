@@ -8,8 +8,8 @@ import (
 	"api-gateway/internal/grpcclient"
 	"api-gateway/internal/middleware"
 
-	assetpb "api-gateway/api/assetpb/v1"
-	userpb "api-gateway/api/userpb/v1"
+	assetpb "api/asset/v1"
+	userpb "api/user/v1"
 
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/net/ghttp"

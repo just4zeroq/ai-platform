@@ -6,7 +6,7 @@ import (
 	"time"
 	"strings"
 
-	assetpb "user-svc/api/assetpb/v1"
+	assetpb "api/asset/v1"
 	userv1 "user-svc/api/user/v1"
 	"user-svc/internal/grpcclient"
 
