@@ -114,9 +114,21 @@ func (s *UserService) Login(ctx context.Context, req *userv1.LoginReq) (*userv1.
 func (s *UserService) ValidateToken(ctx context.Context, token string) (*userv1.ValidateTokenRes, error) {
 	claims, err := s.parseToken(token)
 	if err == nil {
+		// Verify user still exists and is enabled
+		user, err2 := g.DB().Model("users").Ctx(ctx).Where("id", claims.UserId).One()
+		if err2 != nil {
+			return nil, err2
+		}
+		if user == nil {
+			return nil, errors.New("user not found")
+		}
+		if user["status"].Int() != 1 {
+			return nil, errors.New("account is disabled")
+		}
 		return &userv1.ValidateTokenRes{
-			UserId: claims.UserId, UserStatus: 1, Group: "default",
-			HasToken: false, UserRole: claims.Role, TenantId: 0,
+			UserId: claims.UserId, UserStatus: int32(user["status"].Int()),
+			Group: user["group_name"].String(), HasToken: false,
+			UserRole: claims.Role, TenantId: user["tenant_id"].Int64(),
 		}, nil
 	}
 	if len(token) > 3 && token[:3] == "sk-" {
