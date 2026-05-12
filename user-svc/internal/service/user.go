@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"time"
+	"strings"
 
 	userv1 "user-svc/api/user/v1"
 
@@ -163,16 +164,26 @@ func (s *UserService) validateApiKey(ctx context.Context, key string) (*userv1.V
 	if user["status"].Int() != 1 {
 		return nil, errors.New("user is disabled")
 	}
+	modelLimitsStr := apiKey["model_limits"].String()
+	var modelLimits []string
+	if modelLimitsStr != "" {
+		modelLimits = strings.Split(modelLimitsStr, ",")
+	} else {
+		modelLimits = []string{}
+	}
+
 	keyGroup := apiKey["group_name"].String()
+
 	if keyGroup == "" {
 		keyGroup = "default"
 	}
+
 	return &userv1.ValidateTokenRes{
 		UserId: userId, UserStatus: int32(user["status"].Int()),
 		Group: user["group_name"].String(), HasToken: true,
 		ApiKeyId: apiKey["id"].Int64(),
 		ModelLimitsEnabled: apiKey["model_limits_enabled"].Bool(),
-		ModelLimits: []string{}, KeyGroup: keyGroup,
+		ModelLimits: modelLimits, KeyGroup: keyGroup,
 		KeyUnlimitedQuota: true, KeyRemainQuota: 0,
 		UserRole: int32(user["role"].Int()), TenantId: user["tenant_id"].Int64(),
 	}, nil
@@ -212,6 +223,9 @@ func (s *UserService) generateToken(userId int64, username string, role int32) (
 
 func (s *UserService) parseToken(tokenStr string) (*UserClaims, error) {
 	token, err := jwt.ParseWithClaims(tokenStr, &UserClaims{}, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, errors.New("unexpected signing method")
+		}
 		return jwtSecret, nil
 	})
 	if err != nil {
