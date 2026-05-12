@@ -237,15 +237,3 @@ func (s *UserService) parseToken(tokenStr string) (*UserClaims, error) {
 	return nil, errors.New("invalid token")
 }
 
-// Stub methods for API keys -- to be implemented in Task 2.
-func (s *UserService) CreateApiKey(ctx context.Context, req *userv1.CreateApiKeyReq) (*userv1.CreateApiKeyRes, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *UserService) ListApiKeys(ctx context.Context, req *userv1.ListApiKeysReq) (*userv1.ListApiKeysRes, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *UserService) DeleteApiKey(ctx context.Context, req *userv1.DeleteApiKeyReq) (*userv1.DeleteApiKeyRes, error) {
-	return nil, errors.New("not implemented")
-}
