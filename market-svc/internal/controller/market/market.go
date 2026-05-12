@@ -3,7 +3,7 @@ package market
 import (
 	"context"
 
-	marketv1 "market-svc/api/market/v1"
+	marketv1 "api/market/v1"
 )
 
 type Controller struct {

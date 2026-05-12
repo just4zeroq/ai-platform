@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 
-	marketv1 "market-svc/api/market/v1"
+	marketv1 "api/market/v1"
 	"market-svc/internal/controller/market"
 )
 
