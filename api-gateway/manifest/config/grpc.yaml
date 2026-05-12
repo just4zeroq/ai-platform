@@ -1,0 +1,8 @@
+# gRPC client connections
+grpc:
+  user-svc:
+    address: "localhost:8100"
+  asset-svc:
+    address: "localhost:8101"
+  market-svc:
+    address: "localhost:8102"
