@@ -1,0 +1,62 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: aiplatform
+      POSTGRES_PASSWORD: aiplatform
+      POSTGRES_DB: aiplatform
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  api-gateway:
+    build: ./api-gateway
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      - DB_USER=aiplatform
+      - DB_PASS=aiplatform
+      - DB_NAME=aiplatform
+      - REDIS_ADDR=redis:6379
+
+  user-svc:
+    build: ./user-svc
+    ports:
+      - "8100:8100"
+    depends_on:
+      - postgres
+    environment:
+      - DB_NAME=user_svc
+
+  asset-svc:
+    build: ./asset-svc
+    ports:
+      - "8101:8101"
+    depends_on:
+      - postgres
+    environment:
+      - DB_NAME=asset_svc
+
+  market-svc:
+    build: ./market-svc
+    ports:
+      - "8102:8102"
+    depends_on:
+      - postgres
+    environment:
+      - DB_NAME=market_svc
+
+volumes:
+  pgdata:
