@@ -3,7 +3,7 @@ package asset
 import (
 	"context"
 
-	assetv1 "asset-svc/api/asset/v1"
+	assetv1 "api/asset/v1"
 	"asset-svc/internal/service"
 )
 

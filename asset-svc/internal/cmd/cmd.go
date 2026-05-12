@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net"
 
-	assetv1 "asset-svc/api/asset/v1"
+	assetv1 "api/asset/v1"
 	"asset-svc/internal/controller/asset"
 	"asset-svc/internal/service"
 

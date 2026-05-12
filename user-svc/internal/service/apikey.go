@@ -6,7 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 
-	userv1 "user-svc/api/user/v1"
+	userv1 "api/user/v1"
 
 	"github.com/gogf/gf/v2/database/gdb"
 	"github.com/gogf/gf/v2/frame/g"

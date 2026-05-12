@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"time"
 
-	assetv1 "asset-svc/api/asset/v1"
+	assetv1 "api/asset/v1"
 	"github.com/gogf/gf/v2/database/gdb"
 	"github.com/gogf/gf/v2/frame/g"
 )

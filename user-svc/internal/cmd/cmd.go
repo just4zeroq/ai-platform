@@ -6,7 +6,7 @@ import (
 	"net"
 
 	assetpb "api/asset/v1"
-	userv1 "user-svc/api/user/v1"
+	userv1 "api/user/v1"
 	"user-svc/internal/controller/user"
 	"user-svc/internal/grpcclient"
 	"user-svc/internal/service"

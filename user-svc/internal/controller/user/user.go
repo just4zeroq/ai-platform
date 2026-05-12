@@ -3,7 +3,7 @@ package user
 import (
 	"context"
 
-	userv1 "user-svc/api/user/v1"
+	userv1 "api/user/v1"
 	"user-svc/internal/service"
 )
 
