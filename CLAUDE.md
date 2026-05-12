@@ -32,16 +32,118 @@ api/            ← shared proto module (compiled .pb.go files)
 
 Each service is an independent Go module with its own `go.mod`. Proto-generated code lives in `api/` and is shared via `replace` directives.
 
-## Proto Management
+## Proto Definitions
 
-- Source: `proto/<svc>/v1/<svc>.proto`
-- Compiled to: `api/<svc>/v1/*.pb.go` + `*_grpc.pb.go`
-- **Never copy proto files into service directories.** Import directly via `api/<svc>/v1`.
+### Source Organization
 
-```bash
-# Compile proto (run from repo root)
-protoc --go_out=. --go-grpc_out=. proto/<svc>/v1/<svc>.proto
 ```
+proto/
+├── user/v1/user.proto        → go_package "ai-platform/api/user/v1;userv1"
+├── asset/v1/asset.proto      → go_package "ai-platform/api/asset/v1;assetv1"
+├── market/v1/market.proto    → go_package "ai-platform/api/market/v1;marketv1"
+└── gateway/v1/gateway.proto   → go_package "ai-platform/api/gateway/v1;gatewayv1"
+```
+
+Compiled output lands in `api/<svc>/v1/*.pb.go` (shared Go module). All services import from here — never copy proto files into service directories.
+
+### Service RPC Definitions
+
+**user.v1.UserService** (port 8100, gRPC server — `user-svc` owns this)
+```protobuf
+rpc Register(RegisterReq) returns (RegisterRes);
+rpc Login(LoginReq) returns (LoginRes);
+rpc ValidateToken(ValidateTokenReq) returns (ValidateTokenRes);
+rpc CreateApiKey(CreateApiKeyReq) returns (CreateApiKeyRes);
+rpc ListApiKeys(ListApiKeysReq) returns (ListApiKeysRes);
+rpc DeleteApiKey(DeleteApiKeyReq) returns (DeleteApiKeyRes);
+rpc GetUser(GetUserReq) returns (GetUserRes);
+```
+**Import:** `userv1 "api/user/v1"`
+- Server: user-svc implements all RPCs
+- Client: api-gateway (register/login/profile/keys), ai-gateway (ValidateToken)
+
+**asset.v1.AssetService** (port 8101, gRPC server — `asset-svc` owns this)
+```protobuf
+rpc CreateOrder(CreateOrderReq) returns (CreateOrderRes);
+rpc GetBalance(GetBalanceReq) returns (GetBalanceRes);
+rpc ReportUsage(ReportUsageReq) returns (ReportUsageRes);
+rpc ListTransactions(ListTransactionsReq) returns (ListTransactionsRes);
+```
+**Import:** `assetv1 "api/asset/v1"`
+- Server: asset-svc implements all RPCs
+- Client: api-gateway (balance/transactions), user-svc (GetBalance on registration), ai-gateway (ReportUsage after LLM calls)
+
+**market.v1.MarketService** (port 8102, gRPC server — `market-svc` owns this)
+```protobuf
+rpc CreateListing(CreateListingReq) returns (CreateListingRes);
+rpc ListListings(ListListingsReq) returns (ListListingsRes);
+rpc BuyProduct(BuyProductReq) returns (BuyProductRes);
+rpc ListTrades(ListTradesReq) returns (ListTradesRes);
+```
+**Import:** `marketv1 "api/market/v1"`
+
+**gateway.v1.GatewayService** (ai-gateway internal RPC)
+```protobuf
+rpc ValidateKey(ValidateKeyReq) returns (ValidateKeyRes);
+rpc ReportUsage(ReportUsageReq) returns (ReportUsageRes);
+```
+**Import:** `gatewayv1 "api/gateway/v1"`
+
+### Cross-Service Dependency Map
+
+```
+user-svc  (8100)  ──gRPC──▶  asset-svc  (GetBalance → auto-create balance)
+api-gateway (8080) ──gRPC──▶  user-svc   (register/login/profile/keys)
+api-gateway (8080) ──gRPC──▶  asset-svc  (balance/transactions)
+ai-gateway  (8081) ──gRPC──▶  user-svc   (ValidateToken/ValidateApiKey)
+ai-gateway  (8081) ──gRPC──▶  asset-svc  (ReportUsage after LLM calls)
+```
+
+### Import Naming Convention
+
+| proto source | Go package | Import path | Alias |
+|---|---|---|---|
+| `user/v1/user.proto` | `userv1` | `"api/user/v1"` | `userv1` |
+| `asset/v1/asset.proto` | `assetv1` | `"api/asset/v1"` | `assetv1` |
+| `market/v1/market.proto` | `marketv1` | `"api/market/v1"` | `marketv1` |
+| `gateway/v1/gateway.proto` | `gatewayv1` | `"api/gateway/v1"` | `gatewayv1` |
+
+In code, always use the proto-shortened import alias to avoid conflicts with GoFrame API structs in api-gateway:
+
+```go
+import (
+    assetv1 "api/asset/v1"    // proto types (messages, client, server interfaces)
+    userv1 "api/user/v1"
+)
+
+// Register gRPC server
+assetv1.RegisterAssetServiceServer(s, &asset.Controller{svc: svc})
+
+// Call gRPC client
+pbRes, err := grpcclient.UserSvc.GetUser(ctx, &userv1.GetUserReq{UserId: id})
+```
+
+### Adding a New Proto
+
+1. Create `proto/<svc>/v1/<svc>.proto` with `package <svc>.v1` and `go_package "ai-platform/api/<svc>/v1;<svc>v1"`
+2. Run protoc from repo root:
+   ```bash
+   protoc --go_out=. --go-grpc_out=. proto/<svc>/v1/<svc>.proto
+   ```
+3. Add database setup in `scripts/init-db.sh` if new service
+4. Import in any service via `api/<svc>/v1`
+
+### Updating an Existing Proto
+
+1. Edit `proto/<svc>/v1/<svc>.proto`
+2. Re-generate:
+   ```bash
+   protoc --go_out=. --go-grpc_out=. proto/<svc>/v1/<svc>.proto
+   ```
+3. Rebuild all dependent services — no file copying needed:
+   ```bash
+   go build ./...             # all services that import api/<svc>/v1
+   ```
 
 ## Development Commands
 
