@@ -156,8 +156,68 @@ cd <service-dir> && go run .                # start service
 cd web && npm install && npm run dev         # start Vite dev server
 
 # Database (PostgreSQL 16)
-bash scripts/init-db.sh                      # create databases
+bash scripts/init-db.sh                      # create databases (local)
 ```
+
+## Docker
+
+Dockerfiles are in `docker/`. Per-service compose files in each service root for independent deployment.
+
+**Config approach:** Each Docker image bakes the original `manifest/config/config.yaml`. At container startup, `docker/entrypoint.sh` substitutes hostnames from environment variables — no config copies needed.
+
+```bash
+# One-click build & start (top-level, all services)
+cd docker && bash start.sh
+
+# Per-service (standalone, each includes its own postgres):
+cd user-svc && docker compose up -d       # postgres + user-svc + asset-svc
+cd asset-svc && docker compose up -d      # postgres + asset-svc
+cd market-svc && docker compose up -d     # postgres + market-svc
+cd api-gateway && docker compose up -d    # postgres + user-svc + asset-svc + api-gateway
+cd ai-gateway && docker compose up -d     # postgres + user-svc + asset-svc + ai-gateway
+```
+
+**Env vars available** (set in docker-compose `environment:`):
+| Variable | Default | Override in Docker |
+|----------|---------|-------------------|
+| `DB_HOST` | `localhost` → `postgres` | Database server hostname |
+| `USER_SVC_ADDR` | `localhost:8100` → `user-svc:8100` | user-svc gRPC address |
+| `ASSET_SVC_ADDR` | `localhost:8101` → `asset-svc:8101` | asset-svc gRPC address |
+
+## Database Migrations
+
+Uses [Goose](https://github.com/pressly/goose) for SQL migrations. Migration files per service.
+
+```bash
+# Install goose CLI
+go install github.com/pressly/goose/v3/cmd/goose@latest
+
+# Run all migrations (needs postgres running)
+cd docker && bash migrate.sh
+
+# Or per service:
+goose -dir user-svc/migrations postgres "postgres://aiplatform:aiplatform@localhost:5432/user_svc?sslmode=disable" up
+```
+
+Available migrations:
+- `user-svc/migrations/` — users, api_keys
+- `asset-svc/migrations/` — balances, transactions, usage_records, orders
+- `ai-gateway/migrations/` — channels, abilities
+- `market-svc/migrations/` — (empty, pending implementation)
+
+## DAO Code Generation
+
+GoFrame `gf gen dao` generates type-safe DAO/DO/Entity code from database tables. Each service's `hack/config.yaml` now points to PostgreSQL.
+
+**Workflow:**
+1. Start PostgreSQL, run migrations (tables must exist)
+2. Generate code:
+   ```bash
+   cd user-svc && gf gen dao
+   ```
+3. Output: `internal/dao/`, `internal/model/do/`, `internal/model/entity/`
+
+After generation, you can migrate from `g.DB().Model("table")` to `dao.Table.Ctx(ctx)` for type-safe DB access.
 
 ## Code Conventions
 

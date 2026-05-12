@@ -1,4 +1,4 @@
-const API_BASE = 'http://localhost:8080/api/v1'
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8080/api/v1'
 
 export async function apiPost<T>(path: string, body: unknown, token?: string): Promise<T> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
