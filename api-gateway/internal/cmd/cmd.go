@@ -43,6 +43,9 @@ var (
 				group.GET("/user/profile", userCtrl.GetProfile)
 				group.GET("/asset/balance", assetCtrl.GetBalance)
 				group.GET("/asset/transactions", assetCtrl.ListTransactions)
+				group.GET("/user/keys", userCtrl.ListKeys)
+				group.POST("/user/keys/create", userCtrl.CreateKey)
+				group.POST("/user/keys/delete", userCtrl.DeleteKey)
 			})
 
 			s.Run()

@@ -39,3 +39,37 @@ type GetProfileRes struct {
 	Email       string `json:"email"`
 	DisplayName string `json:"display_name"`
 }
+
+type ListKeysReq struct {
+	g.Meta `path:"/user/keys" method:"GET" summary:"List API Keys" tags:"User"`
+}
+
+type ListKeysRes struct {
+	ApiKeys []KeyItem `json:"api_keys"`
+	Total   int       `json:"total"`
+}
+
+type KeyItem struct {
+	Id        int64  `json:"id"`
+	Name      string `json:"name"`
+	Key       string `json:"key"`
+	Status    int32  `json:"status"`
+	CreatedAt string `json:"created_at"`
+}
+
+type CreateKeyReq struct {
+	g.Meta `path:"/user/keys/create" method:"POST" summary:"Create API Key" tags:"User"`
+	Name   string `json:"name"`
+}
+
+type CreateKeyRes struct {
+	ApiKey KeyItem `json:"api_key"`
+	RawKey string  `json:"raw_key"`
+}
+
+type DeleteKeyReq struct {
+	g.Meta `path:"/user/keys/delete" method:"POST" summary:"Delete API Key" tags:"User"`
+	Id     int64 `json:"id"`
+}
+
+type DeleteKeyRes struct{}
