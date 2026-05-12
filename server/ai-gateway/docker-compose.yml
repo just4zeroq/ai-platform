@@ -16,12 +16,24 @@ services:
       - ai-platform
     restart: unless-stopped
 
+  user-svc:
+    build:
+      context: ..
+      dockerfile: user-svc/manifest/docker/Dockerfile
+    environment:
+      DB_HOST: postgres
+      ASSET_SVC_ADDR: asset-svc:8101
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ai-platform
+    restart: unless-stopped
+
   asset-svc:
     build:
       context: ..
-      dockerfile: docker/Dockerfile.asset-svc
-    ports:
-      - "8101:8101"
+      dockerfile: asset-svc/manifest/docker/Dockerfile
     environment:
       DB_HOST: postgres
     depends_on:
@@ -31,20 +43,19 @@ services:
       - ai-platform
     restart: unless-stopped
 
-  user-svc:
+  ai-gateway:
     build:
       context: ..
-      dockerfile: docker/Dockerfile.user-svc
+      dockerfile: ai-gateway/manifest/docker/Dockerfile
     ports:
-      - "8100:8100"
+      - "8081:8081"
     environment:
       DB_HOST: postgres
+      USER_SVC_ADDR: user-svc:8100
       ASSET_SVC_ADDR: asset-svc:8101
     depends_on:
-      postgres:
-        condition: service_healthy
-      asset-svc:
-        condition: service_started
+      - user-svc
+      - asset-svc
     networks:
       - ai-platform
     restart: unless-stopped

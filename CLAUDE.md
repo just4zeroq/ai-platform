@@ -4,40 +4,47 @@
 
 AI capability platform monorepo. 6 Go services + React SPA + Tauri desktop app.
 
-## Architecture
+## Project Structure
 
 ```
-Service          Port   Type     Description
-─────────────────────────────────────────────────
-user-svc         8100   gRPC     User auth (register/login/JWT), API key CRUD
-asset-svc        8101   gRPC     Balance, transactions, usage reporting, orders
-market-svc       8102   gRPC     Product listings, marketplace
-api-gateway      8080   HTTP     Public-facing HTTP API, proxies to gRPC services
-ai-gateway       8081   HTTP     LLM proxy gateway, token validation, model routing
-web              5173   Vite     React SPA (TanStack Router + Zustand)
-desktop          —      Tauri    Electron alternative
+ai-platform/
+├── server/               ← Go services + shared infrastructure
+│   ├── api/              ← Shared proto module (.pb.go)
+│   ├── user-svc/         ← gRPC :8100
+│   ├── asset-svc/        ← gRPC :8101
+│   ├── market-svc/       ← gRPC :8102
+│   ├── api-gateway/      ← HTTP :8080
+│   ├── ai-gateway/       ← HTTP :8081
+│   ├── proto/            ← Proto source definitions
+│   ├── scripts/          ← Database init scripts
+│   └── docker/           ← Dockerfiles, compose, entrypoint, migrations
+├── app/
+│   ├── web/              ← React SPA (Vite)
+│   └── desktop/          ← Tauri desktop app
+├── CLAUDE.md
+└── .gitignore
 ```
 
 ## Module Dependency
 
 ```
-api/            ← shared proto module (compiled .pb.go files)
+server/api/     ← shared proto module (compiled .pb.go files)
 │
-├── user-svc    → replace api => ../api    (server: api/user/v1, client: api/asset/v1)
-├── asset-svc   → replace api => ../api    (server: api/asset/v1)
-├── market-svc  → replace api => ../api    (server: api/market/v1)
-├── api-gateway → replace api => ../api    (client: api/user/v1 + api/asset/v1)
-└── ai-gateway  → replace api => ../api    (client: api/user/v1)
+├── server/user-svc    → replace api => ../api
+├── server/asset-svc   → replace api => ../api
+├── server/market-svc  → replace api => ../api
+├── server/api-gateway → replace api => ../api
+└── server/ai-gateway  → replace api => ../api
 ```
 
-Each service is an independent Go module with its own `go.mod`. Proto-generated code lives in `api/` and is shared via `replace` directives.
+Each service is an independent Go module with its own `go.mod`. Proto-generated code lives in `server/api/` and is shared via `replace` directives.
 
 ## Proto Definitions
 
 ### Source Organization
 
 ```
-proto/
+server/proto/
 ├── user/v1/user.proto        → go_package "ai-platform/api/user/v1;userv1"
 ├── asset/v1/asset.proto      → go_package "ai-platform/api/asset/v1;assetv1"
 ├── market/v1/market.proto    → go_package "ai-platform/api/market/v1;marketv1"
@@ -125,56 +132,56 @@ pbRes, err := grpcclient.UserSvc.GetUser(ctx, &userv1.GetUserReq{UserId: id})
 
 ### Adding a New Proto
 
-1. Create `proto/<svc>/v1/<svc>.proto` with `package <svc>.v1` and `go_package "ai-platform/api/<svc>/v1;<svc>v1"`
+1. Create `server/proto/<svc>/v1/<svc>.proto` with `package <svc>.v1` and `go_package "ai-platform/api/<svc>/v1;<svc>v1"`
 2. Run protoc from repo root:
    ```bash
-   protoc --go_out=. --go-grpc_out=. proto/<svc>/v1/<svc>.proto
+   protoc --go_out=. --go-grpc_out=. server/proto/<svc>/v1/<svc>.proto
    ```
 3. Add database setup in `scripts/init-db.sh` if new service
 4. Import in any service via `api/<svc>/v1`
 
 ### Updating an Existing Proto
 
-1. Edit `proto/<svc>/v1/<svc>.proto`
+1. Edit `server/proto/<svc>/v1/<svc>.proto`
 2. Re-generate:
    ```bash
-   protoc --go_out=. --go-grpc_out=. proto/<svc>/v1/<svc>.proto
+   protoc --go_out=. --go-grpc_out=. server/proto/<svc>/v1/<svc>.proto
    ```
-3. Rebuild all dependent services — no file copying needed:
+3. Rebuild dependent services:
    ```bash
-   go build ./...             # all services that import api/<svc>/v1
+   cd server/<svc> && go build ./...
    ```
 
 ## Development Commands
 
 ```bash
-# Go services
-cd <service-dir> && go build ./...
-cd <service-dir> && go run .                # start service
+# Go services (all paths relative to server/)
+cd server/<service-dir> && go build ./...
+cd server/<service-dir> && go run .          # start service
 
 # Web frontend
-cd web && npm install && npm run dev         # start Vite dev server
+cd app/web && npm install && npm run dev     # start Vite dev server
 
 # Database (PostgreSQL 16)
-bash scripts/init-db.sh                      # create databases (local)
+bash server/scripts/init-db.sh               # create databases (local)
 ```
 
 ## Docker
 
-Dockerfiles are in `docker/`. Per-service compose files in each service root for independent deployment.
+Dockerfiles are in `server/docker/`. Per-service compose files in each service root for independent deployment.
 
 **Config approach:** Each Docker image bakes the original `manifest/config/config.yaml`. At container startup, `docker/entrypoint.sh` substitutes hostnames from environment variables — no config copies needed.
 
 ```bash
 # One-click build & start (top-level, all services)
-cd docker && bash start.sh
+cd server/docker && bash start.sh
 
 # Per-service (standalone, each includes its own postgres):
-cd user-svc && docker compose up -d       # postgres + user-svc + asset-svc
-cd asset-svc && docker compose up -d      # postgres + asset-svc
-cd market-svc && docker compose up -d     # postgres + market-svc
-cd api-gateway && docker compose up -d    # postgres + user-svc + asset-svc + api-gateway
-cd ai-gateway && docker compose up -d     # postgres + user-svc + asset-svc + ai-gateway
+cd server/user-svc && docker compose up -d       # postgres + user-svc + asset-svc
+cd server/asset-svc && docker compose up -d      # postgres + asset-svc
+cd server/market-svc && docker compose up -d     # postgres + market-svc
+cd server/api-gateway && docker compose up -d    # postgres + user-svc + asset-svc + api-gateway
+cd server/ai-gateway && docker compose up -d     # postgres + user-svc + asset-svc + ai-gateway
 ```
 
 **Env vars available** (set in docker-compose `environment:`):
@@ -186,17 +193,17 @@ cd ai-gateway && docker compose up -d     # postgres + user-svc + asset-svc + ai
 
 ## Database Migrations
 
-Uses [Goose](https://github.com/pressly/goose) for SQL migrations. Migration files per service.
+Uses [Goose](https://github.com/pressly/goose) for SQL migrations. Migration files in `server/<svc>/migrations/`.
 
 ```bash
 # Install goose CLI
 go install github.com/pressly/goose/v3/cmd/goose@latest
 
 # Run all migrations (needs postgres running)
-cd docker && bash migrate.sh
+cd server/docker && bash migrate.sh
 
 # Or per service:
-goose -dir user-svc/migrations postgres "postgres://aiplatform:aiplatform@localhost:5432/user_svc?sslmode=disable" up
+goose -dir server/user-svc/migrations postgres "postgres://aiplatform:aiplatform@localhost:5432/user_svc?sslmode=disable" up
 ```
 
 Available migrations:
@@ -207,15 +214,15 @@ Available migrations:
 
 ## DAO Code Generation
 
-GoFrame `gf gen dao` generates type-safe DAO/DO/Entity code from database tables. Each service's `hack/config.yaml` now points to PostgreSQL.
+GoFrame `gf gen dao` generates type-safe DAO/DO/Entity code from database tables. Each service's `server/<svc>/hack/config.yaml` now points to PostgreSQL.
 
 **Workflow:**
 1. Start PostgreSQL, run migrations (tables must exist)
 2. Generate code:
    ```bash
-   cd user-svc && gf gen dao
+   cd server/user-svc && gf gen dao
    ```
-3. Output: `internal/dao/`, `internal/model/do/`, `internal/model/entity/`
+3. Output: `server/<svc>/internal/dao/`, `server/<svc>/internal/model/do/`, `server/<svc>/internal/model/entity/`
 
 After generation, you can migrate from `g.DB().Model("table")` to `dao.Table.Ctx(ctx)` for type-safe DB access.
 

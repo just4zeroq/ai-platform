@@ -23,7 +23,7 @@ services:
   user-svc:
     build:
       context: ..
-      dockerfile: docker/Dockerfile.user-svc
+      dockerfile: user-svc/manifest/docker/Dockerfile
     ports:
       - "8100:8100"
     environment:
@@ -39,7 +39,7 @@ services:
   asset-svc:
     build:
       context: ..
-      dockerfile: docker/Dockerfile.asset-svc
+      dockerfile: asset-svc/manifest/docker/Dockerfile
     ports:
       - "8101:8101"
     environment:
@@ -54,7 +54,7 @@ services:
   market-svc:
     build:
       context: ..
-      dockerfile: docker/Dockerfile.market-svc
+      dockerfile: market-svc/manifest/docker/Dockerfile
     ports:
       - "8102:8102"
     environment:
@@ -69,7 +69,7 @@ services:
   api-gateway:
     build:
       context: ..
-      dockerfile: docker/Dockerfile.api-gateway
+      dockerfile: api-gateway/manifest/docker/Dockerfile
     ports:
       - "8080:8080"
     environment:
@@ -85,7 +85,7 @@ services:
   ai-gateway:
     build:
       context: ..
-      dockerfile: docker/Dockerfile.ai-gateway
+      dockerfile: ai-gateway/manifest/docker/Dockerfile
     ports:
       - "8081:8081"
     environment:
@@ -101,8 +101,8 @@ services:
 
   web:
     build:
-      context: ..
-      dockerfile: docker/Dockerfile.web
+      context: ../..
+      dockerfile: server/docker/Dockerfile.web
       args:
         VITE_API_BASE: http://localhost:8080/api/v1
     ports:

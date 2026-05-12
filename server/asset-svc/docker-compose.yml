@@ -16,12 +16,12 @@ services:
       - ai-platform
     restart: unless-stopped
 
-  market-svc:
+  asset-svc:
     build:
       context: ..
-      dockerfile: docker/Dockerfile.market-svc
+      dockerfile: asset-svc/manifest/docker/Dockerfile
     ports:
-      - "8102:8102"
+      - "8101:8101"
     environment:
       DB_HOST: postgres
     depends_on:
