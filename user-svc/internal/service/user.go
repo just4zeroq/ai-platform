@@ -6,7 +6,9 @@ import (
 	"time"
 	"strings"
 
+	assetpb "user-svc/api/assetpb/v1"
 	userv1 "user-svc/api/user/v1"
+	"user-svc/internal/grpcclient"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gogf/gf/v2/frame/g"
@@ -58,6 +60,12 @@ func (s *UserService) Register(ctx context.Context, req *userv1.RegisterReq) (*u
 		return nil, err
 	}
 	userId, _ := result.LastInsertId()
+
+	// Ensure balance record exists in asset-svc
+	if grpcclient.AssetSvc != nil {
+		grpcclient.AssetSvc.GetBalance(ctx, &assetpb.GetBalanceReq{UserId: userId})
+	}
+
 	token, err := s.generateToken(userId, req.Username, 1)
 	if err != nil {
 		return nil, err

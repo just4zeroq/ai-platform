@@ -5,15 +5,18 @@ import (
 	"fmt"
 	"net"
 
+	assetpb "user-svc/api/assetpb/v1"
+	userv1 "user-svc/api/user/v1"
+	"user-svc/internal/controller/user"
+	"user-svc/internal/grpcclient"
+	"user-svc/internal/service"
+
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/gcmd"
 	"github.com/gogf/gf/v2/os/glog"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/reflection"
-
-	userv1 "user-svc/api/user/v1"
-	"user-svc/internal/controller/user"
-	"user-svc/internal/service"
 )
 
 var (
@@ -23,6 +26,7 @@ var (
 		Brief: "start gRPC server",
 		Func: func(ctx context.Context, parser *gcmd.Parser) (err error) {
 			initDB(ctx)
+			initGrpcClients(ctx)
 			lis, err := net.Listen("tcp", ":8100")
 			if err != nil {
 				glog.Fatalf(ctx, "failed to listen: %v", err)
@@ -53,4 +57,15 @@ func initDB(ctx context.Context) {
 		glog.Fatalf(ctx, "database connection failed: %v", err)
 	}
 	glog.Printf(ctx, "database connected successfully")
+}
+
+func initGrpcClients(ctx context.Context) {
+	cfg := g.Cfg().MustGet(ctx, "grpc.asset-svc").Map()
+	address := cfg["address"].(string)
+	conn, err := grpc.Dial(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		glog.Fatalf(ctx, "failed to connect to asset-svc: %v", err)
+	}
+	grpcclient.AssetSvc = assetpb.NewAssetServiceClient(conn)
+	glog.Printf(ctx, "connected to asset-svc gRPC at %s", address)
 }
