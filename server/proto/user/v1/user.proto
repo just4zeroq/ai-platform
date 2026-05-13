@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package user.v1;
 
-option go_package = "ai-platform/api/user/v1;userv1";
+option go_package = "api/user/v1;userv1";
 
 // === Messages ===
 
@@ -145,6 +145,43 @@ message GetUserRes {
   User user = 1;
 }
 
+message ListUsersReq {
+  int32 page = 1;
+  int32 page_size = 2;
+  int32 status = 3;
+  string group = 4;
+  string keyword = 5;
+}
+
+message ListUsersRes {
+  repeated User users = 1;
+  int32 total = 2;
+}
+
+message UpdateUserReq {
+  int64 user_id = 1;
+  int32 status = 2;
+  string group = 3;
+  int32 role = 4;
+  string remark = 5;
+}
+
+message UpdateUserRes {
+  User user = 1;
+}
+
+message UpdateApiKeyReq {
+  int64 id = 1;
+  int32 status = 2;
+  string group = 3;
+  string model_limits = 4;
+  bool model_limits_enabled = 5;
+}
+
+message UpdateApiKeyRes {
+  ApiKey api_key = 1;
+}
+
 // === Service ===
 
 service UserService {
@@ -155,4 +192,7 @@ service UserService {
   rpc ListApiKeys(ListApiKeysReq) returns (ListApiKeysRes);
   rpc DeleteApiKey(DeleteApiKeyReq) returns (DeleteApiKeyRes);
   rpc GetUser(GetUserReq) returns (GetUserRes);
+  rpc ListUsers(ListUsersReq) returns (ListUsersRes);
+  rpc UpdateUser(UpdateUserReq) returns (UpdateUserRes);
+  rpc UpdateApiKey(UpdateApiKeyReq) returns (UpdateApiKeyRes);
 }

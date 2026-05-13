@@ -1,11 +1,11 @@
-FROM golang:1.25-alpine AS builder
+FROM golang:1.26-alpine AS builder
 WORKDIR /build
 COPY api/ api/
 COPY asset-svc/ asset-svc/
 WORKDIR /build/asset-svc
 RUN go build -o /app/main .
 
-FROM alpine:3.19
+FROM alpine:latest
 RUN apk add --no-cache ca-certificates tzdata
 WORKDIR /app
 COPY --from=builder /app/main .

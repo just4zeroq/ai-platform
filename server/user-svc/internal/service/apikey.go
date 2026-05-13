@@ -91,6 +91,45 @@ func (s *UserService) ListApiKeys(ctx context.Context, req *userv1.ListApiKeysRe
 	return &userv1.ListApiKeysRes{ApiKeys: apiKeys, Total: int32(total)}, nil
 }
 
+func (s *UserService) UpdateApiKey(ctx context.Context, req *userv1.UpdateApiKeyReq) (*userv1.UpdateApiKeyRes, error) {
+	if req.Id <= 0 {
+		return nil, errors.New("id is required")
+	}
+
+	data := g.Map{}
+	if req.Status > 0 {
+		data["status"] = req.Status
+	}
+	if req.Group != "" {
+		data["group_name"] = req.Group
+	}
+	if req.ModelLimits != "" {
+		data["model_limits"] = req.ModelLimits
+	}
+	data["model_limits_enabled"] = req.ModelLimitsEnabled
+
+	_, err := g.DB().Model("api_keys").Ctx(ctx).
+		Where("id", req.Id).Where("deleted_at IS NULL").Update(data)
+	if err != nil {
+		return nil, err
+	}
+
+	// Return updated key
+	k, err := g.DB().Model("api_keys").Ctx(ctx).Where("id", req.Id).One()
+	if err != nil || k == nil {
+		return nil, errors.New("api key not found")
+	}
+	return &userv1.UpdateApiKeyRes{
+		ApiKey: &userv1.ApiKey{
+			Id: k["id"].Int64(), UserId: k["user_id"].Int64(), Key: k["key"].String(),
+			Name: k["name"].String(), Status: int32(k["status"].Int()),
+			ModelLimitsEnabled: k["model_limits_enabled"].Bool(),
+			ModelLimits: k["model_limits"].String(), AllowIps: k["allow_ips"].String(),
+			Group: k["group_name"].String(), CreatedAt: k["created_at"].String(),
+		},
+	}, nil
+}
+
 func (s *UserService) DeleteApiKey(ctx context.Context, req *userv1.DeleteApiKeyReq) (*userv1.DeleteApiKeyRes, error) {
 	_, err := g.DB().Model("api_keys").Ctx(ctx).
 		Where("id", req.Id).Where("user_id", req.UserId).Delete()

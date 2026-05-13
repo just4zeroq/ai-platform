@@ -45,6 +45,7 @@ func TokenAuth(r *ghttp.Request) {
 	// Inject validated user info into context for downstream handlers
 	r.SetCtxVar("user_id", res.UserId)
 	r.SetCtxVar("api_key_id", res.ApiKeyId)
+	r.SetCtxVar("user_role", res.UserRole)
 	r.SetCtxVar("user_group", res.KeyGroup)
 	r.SetCtxVar("model_limits_enabled", res.ModelLimitsEnabled)
 	r.SetCtxVar("model_limits", res.ModelLimits)

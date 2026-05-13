@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package asset.v1;
 
-option go_package = "ai-platform/api/asset/v1;assetv1";
+option go_package = "api/asset/v1;assetv1";
 
 message Product {
   int64 id = 1;
@@ -59,6 +59,20 @@ message UsageRecord {
   int32 completion_tokens = 6;
   double quota = 7;
   string request_id = 8;
+  int64 channel_id = 9;
+  string channel_name = 10;
+  string created_at = 11;
+}
+
+message ListUsageRecordsReq {
+  int64 user_id = 1;
+  int32 page = 2;
+  int32 page_size = 3;
+}
+
+message ListUsageRecordsRes {
+  repeated UsageRecord records = 1;
+  int32 total = 2;
 }
 
 message CreateOrderReq {
@@ -108,9 +122,44 @@ message ListTransactionsRes {
   int32 total = 2;
 }
 
+message CompleteOrderReq {
+  int64 order_id = 1;
+}
+
+message CompleteOrderRes {
+  Order order = 1;
+  double balance_after = 2;
+}
+
+message ListOrdersReq {
+  int64 user_id = 1;
+  int32 page = 2;
+  int32 page_size = 3;
+  string status = 4;
+}
+
+message ListOrdersRes {
+  repeated Order orders = 1;
+  int32 total = 2;
+}
+
+message RechargeBalanceReq {
+  int64 user_id = 1;
+  double amount = 2;
+  string remark = 3;
+}
+
+message RechargeBalanceRes {
+  Balance balance = 1;
+}
+
 service AssetService {
   rpc CreateOrder(CreateOrderReq) returns (CreateOrderRes);
   rpc GetBalance(GetBalanceReq) returns (GetBalanceRes);
   rpc ReportUsage(ReportUsageReq) returns (ReportUsageRes);
   rpc ListTransactions(ListTransactionsReq) returns (ListTransactionsRes);
+  rpc ListUsageRecords(ListUsageRecordsReq) returns (ListUsageRecordsRes);
+  rpc CompleteOrder(CompleteOrderReq) returns (CompleteOrderRes);
+  rpc ListOrders(ListOrdersReq) returns (ListOrdersRes);
+  rpc RechargeBalance(RechargeBalanceReq) returns (RechargeBalanceRes);
 }

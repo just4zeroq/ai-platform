@@ -1,51 +1,51 @@
 package asset
 
 import (
-	"context"
-
 	assetv1 "api-gateway/api/asset/v1"
 	assetpb "api/asset/v1"
 	"api-gateway/internal/grpcclient"
 
 	"github.com/gogf/gf/v2/errors/gcode"
-	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
+	"github.com/gogf/gf/v2/net/ghttp"
 )
 
 type Controller struct{}
 
-func (c *Controller) GetBalance(ctx context.Context, req *assetv1.GetBalanceReq) (res *assetv1.GetBalanceRes, err error) {
-	r := g.RequestFromCtx(ctx)
+func (c *Controller) GetBalance(r *ghttp.Request) {
 	userId := r.GetCtxVar("user_id").Int64()
 	if userId == 0 {
-		return nil, gerror.NewCode(gcode.CodeNotAuthorized)
+		r.Response.WriteJson(g.Map{"code": gcode.CodeNotAuthorized.Code(), "message": "unauthorized"})
+		return
 	}
-	pbRes, err := grpcclient.AssetSvc.GetBalance(ctx, &assetpb.GetBalanceReq{UserId: userId})
+	pbRes, err := grpcclient.AssetSvc.GetBalance(r.Context(), &assetpb.GetBalanceReq{UserId: userId})
 	if err != nil {
-		return nil, err
+		r.Response.WriteJson(g.Map{"code": gcode.CodeInvalidRequest.Code(), "message": err.Error()})
+		return
 	}
-	return &assetv1.GetBalanceRes{Balance: pbRes.Balance.GetBalance()}, nil
+	r.Response.WriteJson(assetv1.GetBalanceRes{Balance: pbRes.Balance.GetBalance()})
 }
 
-func (c *Controller) ListTransactions(ctx context.Context, req *assetv1.ListTransactionsReq) (res *assetv1.ListTransactionsRes, err error) {
-	r := g.RequestFromCtx(ctx)
+func (c *Controller) ListTransactions(r *ghttp.Request) {
 	userId := r.GetCtxVar("user_id").Int64()
 	if userId == 0 {
-		return nil, gerror.NewCode(gcode.CodeNotAuthorized)
+		r.Response.WriteJson(g.Map{"code": gcode.CodeNotAuthorized.Code(), "message": "unauthorized"})
+		return
 	}
-	page := int32(req.Page)
+	page := int32(r.Get("page", 1).Int())
+	pageSize := int32(r.Get("pageSize", 20).Int())
 	if page < 1 {
 		page = 1
 	}
-	pageSize := int32(req.PageSize)
 	if pageSize < 1 {
 		pageSize = 20
 	}
-	pbRes, err := grpcclient.AssetSvc.ListTransactions(ctx, &assetpb.ListTransactionsReq{
+	pbRes, err := grpcclient.AssetSvc.ListTransactions(r.Context(), &assetpb.ListTransactionsReq{
 		UserId: userId, Page: page, PageSize: pageSize,
 	})
 	if err != nil {
-		return nil, err
+		r.Response.WriteJson(g.Map{"code": gcode.CodeInvalidRequest.Code(), "message": err.Error()})
+		return
 	}
 	items := make([]assetv1.TransactionItem, 0)
 	for _, tx := range pbRes.Transactions {
@@ -54,5 +54,5 @@ func (c *Controller) ListTransactions(ctx context.Context, req *assetv1.ListTran
 			BalanceAfter: tx.BalanceAfter, Remark: tx.Remark,
 		})
 	}
-	return &assetv1.ListTransactionsRes{List: items, Total: int(pbRes.Total)}, nil
+	r.Response.WriteJson(assetv1.ListTransactionsRes{List: items, Total: int(pbRes.Total)})
 }

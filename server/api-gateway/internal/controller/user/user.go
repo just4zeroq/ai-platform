@@ -1,70 +1,95 @@
 package user
 
 import (
-	"context"
-
 	userv1 "api-gateway/api/user/v1"
 	userpb "api/user/v1"
 	"api-gateway/internal/grpcclient"
 
 	"github.com/gogf/gf/v2/errors/gcode"
-	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
+	"github.com/gogf/gf/v2/net/ghttp"
 )
 
 type Controller struct{}
 
-func (c *Controller) Register(ctx context.Context, req *userv1.RegisterReq) (res *userv1.RegisterRes, err error) {
-	pbRes, err := grpcclient.UserSvc.Register(ctx, &userpb.RegisterReq{
+func (c *Controller) Register(r *ghttp.Request) {
+	var req userv1.RegisterReq
+	if err := r.Parse(&req); err != nil {
+		r.Response.WriteJson(g.Map{"code": gcode.CodeInvalidParameter.Code(), "message": err.Error()})
+		return
+	}
+	g.Log().Info(r.Context(), "Register called", req.Username)
+	pbRes, err := grpcclient.UserSvc.Register(r.Context(), &userpb.RegisterReq{
 		Username: req.Username, Password: req.Password, Email: req.Email,
 	})
 	if err != nil {
-		return nil, err
+		g.Log().Error(r.Context(), "Register gRPC error", err)
+		r.Response.WriteJson(g.Map{"code": gcode.CodeInvalidRequest.Code(), "message": err.Error()})
+		return
 	}
-	return &userv1.RegisterRes{
-		UserId: pbRes.User.Id, Username: pbRes.User.Username, Token: pbRes.AccessToken,
-	}, nil
+	g.Log().Info(r.Context(), "Register gRPC success", pbRes.User.Id, pbRes.AccessToken)
+	r.Response.WriteJson(g.Map{
+		"code":    0,
+		"message": "ok",
+		"data": userv1.RegisterRes{
+			UserId: pbRes.User.Id, Username: pbRes.User.Username, Token: pbRes.AccessToken,
+		},
+	})
+	r.Exit()
 }
 
-func (c *Controller) Login(ctx context.Context, req *userv1.LoginReq) (res *userv1.LoginRes, err error) {
-	pbRes, err := grpcclient.UserSvc.Login(ctx, &userpb.LoginReq{
+func (c *Controller) Login(r *ghttp.Request) {
+	var req userv1.LoginReq
+	if err := r.Parse(&req); err != nil {
+		r.Response.WriteJson(g.Map{"code": gcode.CodeInvalidParameter.Code(), "message": err.Error()})
+		return
+	}
+	pbRes, err := grpcclient.UserSvc.Login(r.Context(), &userpb.LoginReq{
 		Username: req.Username, Password: req.Password,
 	})
 	if err != nil {
-		return nil, err
+		r.Response.WriteJson(g.Map{"code": gcode.CodeInvalidRequest.Code(), "message": err.Error()})
+		return
 	}
-	return &userv1.LoginRes{
-		UserId: pbRes.User.Id, Username: pbRes.User.Username, Token: pbRes.AccessToken,
-	}, nil
+	r.Response.WriteJson(g.Map{
+		"code":    0,
+		"message": "ok",
+		"data": userv1.LoginRes{
+			UserId: pbRes.User.Id, Username: pbRes.User.Username, Token: pbRes.AccessToken,
+		},
+	})
+	r.Exit()
 }
 
-func (c *Controller) GetProfile(ctx context.Context, req *userv1.GetProfileReq) (res *userv1.GetProfileRes, err error) {
-	r := g.RequestFromCtx(ctx)
+func (c *Controller) GetProfile(r *ghttp.Request) {
 	userId := r.GetCtxVar("user_id").Int64()
 	if userId == 0 {
-		return nil, gerror.NewCode(gcode.CodeNotAuthorized)
+		r.Response.WriteJson(g.Map{"code": gcode.CodeNotAuthorized.Code(), "message": "unauthorized"})
+		return
 	}
-	pbRes, err := grpcclient.UserSvc.GetUser(ctx, &userpb.GetUserReq{UserId: userId})
+	pbRes, err := grpcclient.UserSvc.GetUser(r.Context(), &userpb.GetUserReq{UserId: userId})
 	if err != nil {
-		return nil, err
+		r.Response.WriteJson(g.Map{"code": gcode.CodeInvalidRequest.Code(), "message": err.Error()})
+		return
 	}
-	return &userv1.GetProfileRes{
+	r.Response.WriteJson(userv1.GetProfileRes{
 		Id: pbRes.User.Id, Username: pbRes.User.Username,
 		Email: pbRes.User.Email, DisplayName: pbRes.User.DisplayName,
-	}, nil
+	})
 }
 
-func (c *Controller) ListKeys(ctx context.Context, req *userv1.ListKeysReq) (res *userv1.ListKeysRes, err error) {
-	r := g.RequestFromCtx(ctx)
+func (c *Controller) ListKeys(r *ghttp.Request) {
 	userId := r.GetCtxVar("user_id").Int64()
 	if userId == 0 {
-		return nil, gerror.NewCode(gcode.CodeNotAuthorized)
+		r.Response.WriteJson(g.Map{"code": gcode.CodeNotAuthorized.Code(), "message": "unauthorized"})
+		return
 	}
-	pbRes, err := grpcclient.UserSvc.ListApiKeys(ctx, &userpb.ListApiKeysReq{
+	pbRes, err := grpcclient.UserSvc.ListApiKeys(r.Context(), &userpb.ListApiKeysReq{
 		UserId: userId, Page: 1, PageSize: 100,
 	})
 	if err != nil {
-		return nil, err
+		r.Response.WriteJson(g.Map{"code": gcode.CodeInvalidRequest.Code(), "message": err.Error()})
+		return
 	}
 	items := make([]userv1.KeyItem, 0)
 	for _, k := range pbRes.ApiKeys {
@@ -73,42 +98,54 @@ func (c *Controller) ListKeys(ctx context.Context, req *userv1.ListKeysReq) (res
 			Status: k.Status, CreatedAt: k.CreatedAt,
 		})
 	}
-	return &userv1.ListKeysRes{ApiKeys: items, Total: int(pbRes.Total)}, nil
+	r.Response.WriteJson(userv1.ListKeysRes{ApiKeys: items, Total: int(pbRes.Total)})
 }
 
-func (c *Controller) CreateKey(ctx context.Context, req *userv1.CreateKeyReq) (res *userv1.CreateKeyRes, err error) {
-	r := g.RequestFromCtx(ctx)
+func (c *Controller) CreateKey(r *ghttp.Request) {
+	var req userv1.CreateKeyReq
+	if err := r.Parse(&req); err != nil {
+		r.Response.WriteJson(g.Map{"code": gcode.CodeInvalidParameter.Code(), "message": err.Error()})
+		return
+	}
 	userId := r.GetCtxVar("user_id").Int64()
 	if userId == 0 {
-		return nil, gerror.NewCode(gcode.CodeNotAuthorized)
+		r.Response.WriteJson(g.Map{"code": gcode.CodeNotAuthorized.Code(), "message": "unauthorized"})
+		return
 	}
-	pbRes, err := grpcclient.UserSvc.CreateApiKey(ctx, &userpb.CreateApiKeyReq{
+	pbRes, err := grpcclient.UserSvc.CreateApiKey(r.Context(), &userpb.CreateApiKeyReq{
 		UserId: userId, Name: req.Name,
 	})
 	if err != nil {
-		return nil, err
+		r.Response.WriteJson(g.Map{"code": gcode.CodeInvalidRequest.Code(), "message": err.Error()})
+		return
 	}
-	return &userv1.CreateKeyRes{
+	r.Response.WriteJson(userv1.CreateKeyRes{
 		ApiKey: userv1.KeyItem{
 			Id: pbRes.ApiKey.Id, Name: pbRes.ApiKey.Name,
 			Key: pbRes.ApiKey.Key, Status: pbRes.ApiKey.Status,
 			CreatedAt: pbRes.ApiKey.CreatedAt,
 		},
 		RawKey: pbRes.RawKey,
-	}, nil
+	})
 }
 
-func (c *Controller) DeleteKey(ctx context.Context, req *userv1.DeleteKeyReq) (res *userv1.DeleteKeyRes, err error) {
-	r := g.RequestFromCtx(ctx)
+func (c *Controller) DeleteKey(r *ghttp.Request) {
+	var req userv1.DeleteKeyReq
+	if err := r.Parse(&req); err != nil {
+		r.Response.WriteJson(g.Map{"code": gcode.CodeInvalidParameter.Code(), "message": err.Error()})
+		return
+	}
 	userId := r.GetCtxVar("user_id").Int64()
 	if userId == 0 {
-		return nil, gerror.NewCode(gcode.CodeNotAuthorized)
+		r.Response.WriteJson(g.Map{"code": gcode.CodeNotAuthorized.Code(), "message": "unauthorized"})
+		return
 	}
-	_, err = grpcclient.UserSvc.DeleteApiKey(ctx, &userpb.DeleteApiKeyReq{
+	_, err := grpcclient.UserSvc.DeleteApiKey(r.Context(), &userpb.DeleteApiKeyReq{
 		Id: req.Id, UserId: userId,
 	})
 	if err != nil {
-		return nil, err
+		r.Response.WriteJson(g.Map{"code": gcode.CodeInvalidRequest.Code(), "message": err.Error()})
+		return
 	}
-	return &userv1.DeleteKeyRes{}, nil
+	r.Response.WriteJson(userv1.DeleteKeyRes{})
 }

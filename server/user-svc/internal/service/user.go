@@ -11,6 +11,7 @@ import (
 	"user-svc/internal/grpcclient"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/gogf/gf/v2/database/gdb"
 	"github.com/gogf/gf/v2/frame/g"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -213,6 +214,107 @@ func (s *UserService) GetUser(ctx context.Context, userId int64) (*userv1.User, 
 		Role: user["role"].Int32(), Group: user["group_name"].String(),
 		Source: user["source"].String(), Remark: user["remark"].String(),
 		CreatedAt: user["created_at"].String(), UpdatedAt: user["updated_at"].String(),
+	}, nil
+}
+
+func (s *UserService) ListUsers(ctx context.Context, req *userv1.ListUsersReq) (*userv1.ListUsersRes, error) {
+	m := g.DB().Model("users").Ctx(ctx)
+
+	if req.Status > 0 {
+		m = m.Where("status", req.Status)
+	}
+	if req.Group != "" {
+		m = m.Where("group_name", req.Group)
+	}
+	if req.Keyword != "" {
+		m = m.Where("username ILIKE ? OR display_name ILIKE ? OR email ILIKE ?",
+			"%"+req.Keyword+"%", "%"+req.Keyword+"%", "%"+req.Keyword+"%")
+	}
+
+	total, err := m.Count()
+	if err != nil {
+		return nil, err
+	}
+
+	page := int(req.Page)
+	if page < 1 {
+		page = 1
+	}
+	pageSize := int(req.PageSize)
+	if pageSize <= 0 || pageSize > 100 {
+		pageSize = 20
+	}
+
+	var dbUsers []gdb.Record
+	err = m.Order("id ASC").Limit(pageSize).Offset((page-1)*pageSize).Scan(&dbUsers)
+	if err != nil {
+		return nil, err
+	}
+
+	users := make([]*userv1.User, 0, len(dbUsers))
+	for _, u := range dbUsers {
+		users = append(users, &userv1.User{
+			Id: u["id"].Int64(), TenantId: u["tenant_id"].Int64(),
+			Username: u["username"].String(), Email: u["email"].String(),
+			Phone: u["phone"].String(), DisplayName: u["display_name"].String(),
+			Avatar: u["avatar"].String(), Status: u["status"].Int32(),
+			Role: u["role"].Int32(), Group: u["group_name"].String(),
+			Source: u["source"].String(), Remark: u["remark"].String(),
+			CreatedAt: u["created_at"].String(), UpdatedAt: u["updated_at"].String(),
+		})
+	}
+	return &userv1.ListUsersRes{Users: users, Total: int32(total)}, nil
+}
+
+func (s *UserService) UpdateUser(ctx context.Context, req *userv1.UpdateUserReq) (*userv1.UpdateUserRes, error) {
+	if req.UserId <= 0 {
+		return nil, errors.New("user_id is required")
+	}
+
+	data := g.Map{}
+	if req.Status > 0 {
+		data["status"] = req.Status
+	}
+	if req.Group != "" {
+		data["group_name"] = req.Group
+	}
+	if req.Role > 0 {
+		data["role"] = req.Role
+	}
+	if req.Remark != "" {
+		data["remark"] = req.Remark
+	}
+	if len(data) == 0 {
+		return nil, errors.New("no fields to update")
+	}
+
+	_, err := g.DB().Model("users").Ctx(ctx).
+		Where("id", req.UserId).Update(data)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.GetUserRes(ctx, req.UserId)
+}
+
+func (s *UserService) GetUserRes(ctx context.Context, userId int64) (*userv1.UpdateUserRes, error) {
+	u, err := g.DB().Model("users").Ctx(ctx).Where("id", userId).One()
+	if err != nil {
+		return nil, err
+	}
+	if u == nil {
+		return nil, errors.New("user not found")
+	}
+	return &userv1.UpdateUserRes{
+		User: &userv1.User{
+			Id: u["id"].Int64(), TenantId: u["tenant_id"].Int64(),
+			Username: u["username"].String(), Email: u["email"].String(),
+			Phone: u["phone"].String(), DisplayName: u["display_name"].String(),
+			Avatar: u["avatar"].String(), Status: u["status"].Int32(),
+			Role: u["role"].Int32(), Group: u["group_name"].String(),
+			Source: u["source"].String(), Remark: u["remark"].String(),
+			CreatedAt: u["created_at"].String(), UpdatedAt: u["updated_at"].String(),
+		},
 	}, nil
 }
 

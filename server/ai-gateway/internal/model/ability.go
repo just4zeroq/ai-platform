@@ -1,11 +1,12 @@
 package model
 
+// Ability maps a model+group pair to a channel for routing.
 type Ability struct {
-	Group     string `json:"group" gorm:"type:varchar(64);primaryKey;autoIncrement:false"`
-	Model     string `json:"model" gorm:"type:varchar(255);primaryKey;autoIncrement:false"`
-	ChannelId int    `json:"channel_id" gorm:"primaryKey;autoIncrement:false;index"`
+	Group     string `json:"group"`
+	Model     string `json:"model"`
+	ChannelId int    `json:"channel_id"`
 	Enabled   bool   `json:"enabled"`
-	Priority  *int64 `json:"priority" gorm:"bigint;default:0;index"`
-	Weight    uint   `json:"weight" gorm:"default:0;index"`
-	Tag       string `json:"tag" gorm:"index"`
+	Priority  int64  `json:"priority"`
+	Weight    uint   `json:"weight"`
+	Tag       string `json:"tag"`
 }

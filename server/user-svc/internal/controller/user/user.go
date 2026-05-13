@@ -41,3 +41,15 @@ func (c *Controller) GetUser(ctx context.Context, req *userv1.GetUserReq) (*user
 	}
 	return &userv1.GetUserRes{User: user}, nil
 }
+
+func (c *Controller) ListUsers(ctx context.Context, req *userv1.ListUsersReq) (*userv1.ListUsersRes, error) {
+	return c.svc.ListUsers(ctx, req)
+}
+
+func (c *Controller) UpdateUser(ctx context.Context, req *userv1.UpdateUserReq) (*userv1.UpdateUserRes, error) {
+	return c.svc.UpdateUser(ctx, req)
+}
+
+func (c *Controller) UpdateApiKey(ctx context.Context, req *userv1.UpdateApiKeyReq) (*userv1.UpdateApiKeyRes, error) {
+	return c.svc.UpdateApiKey(ctx, req)
+}

@@ -233,3 +233,270 @@ func (s *AssetService) CreateOrder(ctx context.Context, req *assetv1.CreateOrder
 		},
 	}, nil
 }
+
+func (s *AssetService) CompleteOrder(ctx context.Context, req *assetv1.CompleteOrderReq) (*assetv1.CompleteOrderRes, error) {
+	if req.OrderId <= 0 {
+		return nil, errors.New("order_id is required")
+	}
+
+	var order *assetv1.Order
+	var balanceAfter float64
+
+	err := g.DB().Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
+		o, err := tx.Model("orders").Ctx(ctx).Where("id", req.OrderId).One()
+		if err != nil {
+			return err
+		}
+		if o == nil {
+			return errors.New("order not found")
+		}
+		if o["status"].String() != "pending" {
+			return errors.New("order already completed or cancelled")
+		}
+
+		userId := o["user_id"].Int64()
+		amount := o["total_amount"].Float64()
+
+		// Mark order as completed
+		_, err = tx.Model("orders").Ctx(ctx).
+			Where("id", req.OrderId).
+			Data(g.Map{
+				"status":     "completed",
+				"paid_at":    gdb.Raw("NOW()"),
+				"updated_at": gdb.Raw("NOW()"),
+			}).Update()
+		if err != nil {
+			return err
+		}
+
+		// Ensure balance exists
+		if err := s.EnsureBalance(ctx, userId); err != nil {
+			return err
+		}
+
+		// Add balance with optimistic locking
+		amountStr := strconv.FormatFloat(amount, 'f', -1, 64)
+		for attempt := 0; attempt < 3; attempt++ {
+			record, err := tx.Model("balances").Ctx(ctx).Where("user_id", userId).One()
+			if err != nil {
+				return err
+			}
+			if record == nil {
+				return errors.New("balance not found")
+			}
+
+			version := record["version"].Int()
+			currentBalance := record["balance"].Float64()
+			balanceAfter = currentBalance + amount
+
+			result, err := tx.Model("balances").Ctx(ctx).
+				Where("user_id", userId).
+				Where("version", version).
+				Data(g.Map{
+					"balance":         balanceAfter,
+					"total_recharged": gdb.Raw("total_recharged + " + amountStr),
+					"version":         gdb.Raw("version + 1"),
+					"updated_at":      gdb.Raw("NOW()"),
+				}).Update()
+			if err != nil {
+				return err
+			}
+			rows, _ := result.RowsAffected()
+			if rows > 0 {
+				break
+			}
+			if attempt == 2 {
+				return errors.New("concurrent update conflict")
+			}
+		}
+
+		// Record transaction
+		_, err = tx.Model("transactions").Ctx(ctx).Data(g.Map{
+			"user_id":        userId,
+			"type":           "recharge",
+			"amount":         amount,
+			"balance_before": balanceAfter - amount,
+			"balance_after":  balanceAfter,
+			"reference_type": "order",
+			"reference_id":   req.OrderId,
+			"remark":         "order completed: " + o["order_no"].String(),
+		}).Insert()
+		if err != nil {
+			return err
+		}
+
+		order = &assetv1.Order{
+			Id: o["id"].Int64(), OrderNo: o["order_no"].String(),
+			UserId: userId, Type: o["type"].String(), Status: "completed",
+			TotalAmount: amount, PaymentMethod: o["payment_method"].String(),
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &assetv1.CompleteOrderRes{Order: order, BalanceAfter: balanceAfter}, nil
+}
+
+func (s *AssetService) ListOrders(ctx context.Context, req *assetv1.ListOrdersReq) (*assetv1.ListOrdersRes, error) {
+	m := g.DB().Model("orders").Ctx(ctx)
+	if req.UserId > 0 {
+		m = m.Where("user_id", req.UserId)
+	}
+	if req.Status != "" {
+		m = m.Where("status", req.Status)
+	}
+
+	total, err := m.Count()
+	if err != nil {
+		return nil, err
+	}
+
+	page := int(req.Page)
+	if page < 1 {
+		page = 1
+	}
+	pageSize := int(req.PageSize)
+	if pageSize <= 0 || pageSize > 100 {
+		pageSize = 20
+	}
+
+	var rows []gdb.Record
+	err = m.Order("id DESC").Limit(pageSize).Offset((page-1)*pageSize).Scan(&rows)
+	if err != nil {
+		return nil, err
+	}
+
+	orders := make([]*assetv1.Order, 0, len(rows))
+	for _, o := range rows {
+		orders = append(orders, &assetv1.Order{
+			Id: o["id"].Int64(), OrderNo: o["order_no"].String(),
+			UserId: o["user_id"].Int64(), Type: o["type"].String(),
+			Status: o["status"].String(), TotalAmount: o["total_amount"].Float64(),
+			PaymentMethod: o["payment_method"].String(),
+			PaymentTradeNo: o["payment_trade_no"].String(),
+			PaidAt: o["paid_at"].String(),
+		})
+	}
+	return &assetv1.ListOrdersRes{Orders: orders, Total: int32(total)}, nil
+}
+
+func (s *AssetService) RechargeBalance(ctx context.Context, req *assetv1.RechargeBalanceReq) (*assetv1.RechargeBalanceRes, error) {
+	if req.UserId <= 0 {
+		return nil, errors.New("user_id is required")
+	}
+	if req.Amount <= 0 {
+		return nil, errors.New("amount must be positive")
+	}
+
+	if err := s.EnsureBalance(ctx, req.UserId); err != nil {
+		return nil, err
+	}
+
+	var balanceAfter float64
+	amountStr := strconv.FormatFloat(req.Amount, 'f', -1, 64)
+
+	err := g.DB().Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
+		for attempt := 0; attempt < 3; attempt++ {
+			record, err := tx.Model("balances").Ctx(ctx).Where("user_id", req.UserId).One()
+			if err != nil {
+				return err
+			}
+			if record == nil {
+				return errors.New("balance not found")
+			}
+
+			version := record["version"].Int()
+			currentBalance := record["balance"].Float64()
+			balanceAfter = currentBalance + req.Amount
+
+			result, err := tx.Model("balances").Ctx(ctx).
+				Where("user_id", req.UserId).
+				Where("version", version).
+				Data(g.Map{
+					"balance":         balanceAfter,
+					"total_recharged": gdb.Raw("total_recharged + " + amountStr),
+					"version":         gdb.Raw("version + 1"),
+					"updated_at":      gdb.Raw("NOW()"),
+				}).Update()
+			if err != nil {
+				return err
+			}
+			rows, _ := result.RowsAffected()
+			if rows > 0 {
+				break
+			}
+			if attempt == 2 {
+				return errors.New("concurrent update conflict")
+			}
+		}
+
+		// Record transaction
+		_, err := tx.Model("transactions").Ctx(ctx).Data(g.Map{
+			"user_id":        req.UserId,
+			"type":           "recharge",
+			"amount":         req.Amount,
+			"balance_before": balanceAfter - req.Amount,
+			"balance_after":  balanceAfter,
+			"reference_type": "admin",
+			"remark":         req.Remark,
+		}).Insert()
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &assetv1.RechargeBalanceRes{
+		Balance: &assetv1.Balance{
+			UserId: req.UserId, Balance: balanceAfter,
+		},
+	}, nil
+}
+
+func (s *AssetService) ListUsageRecords(ctx context.Context, req *assetv1.ListUsageRecordsReq) (*assetv1.ListUsageRecordsRes, error) {
+	m := g.DB().Model("usage_records").Ctx(ctx)
+	if req.UserId > 0 {
+		m = m.Where("user_id", req.UserId)
+	}
+
+	total, err := m.Count()
+	if err != nil {
+		return nil, err
+	}
+
+	pageSize := int(req.PageSize)
+	if pageSize <= 0 || pageSize > 100 {
+		pageSize = 20
+	}
+	page := int(req.Page)
+	if page <= 0 {
+		page = 1
+	}
+	offset := (page - 1) * pageSize
+
+	rows, err := m.Order("id DESC").Limit(pageSize).Offset(offset).All()
+	if err != nil {
+		return nil, err
+	}
+
+	records := make([]*assetv1.UsageRecord, 0, len(rows))
+	for _, r := range rows {
+		records = append(records, &assetv1.UsageRecord{
+			Id:               r["id"].Int64(),
+			UserId:           r["user_id"].Int64(),
+			ApiKeyId:         r["api_key_id"].Int64(),
+			ModelName:        r["model_name"].String(),
+			PromptTokens:     int32(r["prompt_tokens"].Int()),
+			CompletionTokens: int32(r["completion_tokens"].Int()),
+			Quota:            r["quota"].Float64(),
+			RequestId:        r["request_id"].String(),
+			ChannelId:        r["channel_id"].Int64(),
+			ChannelName:      r["channel_name"].String(),
+			CreatedAt:        r["created_at"].String(),
+		})
+	}
+
+	return &assetv1.ListUsageRecordsRes{Records: records, Total: int32(total)}, nil
+}
